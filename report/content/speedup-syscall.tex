@@ -1,0 +1,41 @@
+\subsubsection{Mô tả bài toán}
+
+Tối ưu hóa lệnh gọi hệ thống \texttt{getpid()} bằng cách chia sẻ một vùng nhớ chỉ đọc giữa kernel và user. Thay vì trap vào kernel mỗi lần gọi getpid, tiến trình user có thể đọc trực tiếp PID từ một trang bộ nhớ đặc biệt đã được ánh xạ sẵn. Trang này chứa một struct \texttt{usyscall} với trường \texttt{pid} lưu PID của tiến trình hiện tại.
+
+Ngoài ra, viết chương trình kiểm tra \texttt{pidget()} để so sánh giá trị trả về từ getpid() (system call thông thường) và ugetpid() (đọc trực tiếp từ vùng chia sẻ). Bài tập đạt yêu cầu nếu hai giá trị này trùng nhau.
+
+\subsubsection{Phương pháp thực hiện}
+\begin{enumerate}
+\item Trong \texttt{proc\_pagetable()}, khởi tạo page table mới và ánh xạ các vùng bắt buộc (trampoline, trapframe).
+\item Trong \texttt{allocproc()}, cấp phát và khởi tạo tiến trình, đồng thời xử lý cấp phát và ánh xạ trang \texttt{USYSCALL}.
+\item Trong \texttt{freeproc()}, giải phóng tài nguyên tiến trình, bao gồm cả trang \texttt{USYSCALL} nếu tồn tại.
+\end{enumerate}
+
+\paragraph{Khởi tạo page table}
+Trong hàm \texttt{proc\_pagetable()}:
+\begin{itemize}
+\item Tạo một page table mới bằng \texttt{uvmcreate()}.
+\item Ánh xạ \texttt{trampoline} và \texttt{trapframe} vào không gian địa chỉ user.
+\item Đảm bảo các ánh xạ này có quyền truy cập phù hợp.
+\end{itemize}
+
+\paragraph{Cấp phát và khởi tạo tiến trình}
+Trong hàm \texttt{allocproc()}:
+\begin{itemize}
+\item Tìm một tiến trình rảnh trong mảng \texttt{proc[]} và khởi tạo các trường cơ bản (PID, trạng thái, trapframe).
+\item Cấp phát một trang cho \texttt{usyscall} bằng \texttt{kalloc()}.
+\item Khởi tạo trường \texttt{pid} trong \texttt{struct usyscall}.
+\item Ánh xạ địa chỉ ảo \texttt{USYSCALL} tới trang vật lý chứa \texttt{struct usyscall} bằng \texttt{mappages()} với quyền chỉ đọc cho user.
+\end{itemize}
+
+\paragraph{Giải phóng tiến trình}
+Trong hàm \texttt{freeproc()}:
+\begin{itemize}
+\item Giải phóng vùng nhớ được cấp cho \texttt{usyscall} nếu tồn tại.
+\item Đặt lại trạng thái tiến trình về \texttt{UNUSED}.
+\end{itemize}
+Trong hàm \texttt{proc\_freepagetable()}:
+\begin{itemize}
+\item Bỏ ánh xạ vùng \texttt{USYSCALL} khỏi page table bằng \texttt{uvmunmap()}.
+\item Giải phóng toàn bộ page table của tiến trình.
+\end{itemize}
