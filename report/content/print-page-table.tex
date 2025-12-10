@@ -1,0 +1,46 @@
+\subsubsection{Mô tả bài toán}
+
+Viết hàm \texttt{vmprint()} để in ra nội dung của bảng trang (page table) trong hệ thống RISC-V. Hàm này giúp hình dung cấu trúc phân cấp của bảng trang và hỗ trợ gỡ lỗi trong tương lai.
+
+Hàm \texttt{vmprint()} nhận vào một tham số kiểu \texttt{pagetable\_t} và in bảng trang đó theo định dạng phân cấp. Mỗi mức của bảng trang được thể hiện bằng các dấu chấm (\texttt{..}), cho biết độ sâu của PTE trong cấu trúc cây. Chỉ các PTE hợp lệ mới được in ra, bao gồm chỉ số PTE, giá trị PTE (với các bit quyền truy cập), và địa chỉ vật lý tương ứng.
+
+Ngoài ra, chèn lệnh gọi \texttt{vmprint()} trong \texttt{exec.c} để in bảng trang của tiến trình đầu tiên (PID = 1) ngay trước khi hàm \texttt{exec()} trả về. Bài tập đạt yêu cầu khi vượt qua bài kiểm tra "pte printout" của lệnh \texttt{make grade}.
+
+\subsubsection{Phương pháp thực hiện}
+\begin{enumerate}
+\item Trong \texttt{kernel/vm.c}, viết hàm đệ quy \texttt{vmprintlevel()} để duyệt qua các cấp của bảng trang.
+\item Viết hàm \texttt{vmprint()} để in địa chỉ bảng trang và gọi hàm đệ quy.
+\item Trong \texttt{kernel/defs.h}, khai báo prototype của hàm \texttt{vmprint()}.
+\item Trong \texttt{kernel/exec.c}, chèn lệnh gọi \texttt{vmprint()} cho tiến trình có PID = 1.
+\end{enumerate}
+
+\paragraph{Duyệt qua bảng trang}
+Trong hàm \texttt{vmprintlevel()}:
+\begin{itemize}
+\item Duyệt qua 512 PTE trong bảng trang hiện tại.
+\item Chỉ xử lý các PTE hợp lệ (có bit \texttt{PTE\_V} được set).
+\item In ra độ sâu (số lượng \texttt{..}), chỉ số PTE, giá trị PTE, và địa chỉ vật lý.
+\item Phân biệt PTE là bảng trang con (không có bit R|W|X) hay là trang lá (có ít nhất một bit R|W|X).
+\item Nếu PTE trỏ đến bảng trang con, đệ quy xuống cấp tiếp theo với độ sâu tăng thêm 1.
+\end{itemize}
+
+\paragraph{In bảng trang}
+Trong hàm \texttt{vmprint()}:
+\begin{itemize}
+\item In dòng đầu tiên chứa địa chỉ của bảng trang: \texttt{"page table 0x..."}.
+\item Gọi \texttt{vmprintlevel()} với tham số bảng trang và độ sâu ban đầu là 0.
+\item Sử dụng macro \texttt{PTE2PA()} từ \texttt{kernel/riscv.h} để chuyển đổi PTE thành địa chỉ vật lý.
+\end{itemize}
+
+\paragraph{Khai báo và sử dụng}
+Trong hàm \texttt{kernel/defs.h}:
+\begin{itemize}
+\item Thêm dòng khai báo \texttt{void vmprint(pagetable\_t);} vào phần khai báo các hàm của \texttt{vm.c}.
+\end{itemize}
+
+Trong hàm \texttt{exec()} của \texttt{kernel/exec.c}:
+\begin{itemize}
+\item Sau khi gán \texttt{p->pagetable = pagetable} và trước câu lệnh \texttt{return argc}.
+\item Thêm điều kiện kiểm tra: \texttt{if(p->pid == 1) vmprint(p->pagetable)}.
+\item Điều này đảm bảo chỉ in bảng trang của tiến trình init (tiến trình đầu tiên).
+\end{itemize}
