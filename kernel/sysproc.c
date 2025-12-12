@@ -74,7 +74,42 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  // Virtual address
+  uint64 base;
+
+  // Pages to test
+  int len;
+
+  // Address to store the bitmask
+  uint64 mask_addr;
+
+  argaddr(0, &base);
+  argint(1, &len);
+  argaddr(2, &mask_addr);
+
+  // Limit to 32 like test
+  if(len > 32)
+    return -1;
+
+  struct proc *p = myproc();
+  unsigned int bitmask = 0;
+
+  // Go through each page
+  for(int i = 0; i < len; i++) {
+    uint64 va = base + i * PGSIZE;
+    pte_t *pte = walk(p->pagetable, va, 0);
+
+    // Page not mapped (valid bit is 0)
+    if((*pte & PTE_V) == 0)
+      continue;
+
+    // If accessed bit is set
+    if(*pte & PTE_A) {
+      // Set bit in bitmask to indicate access
+      bitmask |= (1 << i);
+    }
+  }
+
   return 0;
 }
 #endif
