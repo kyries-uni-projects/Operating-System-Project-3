@@ -1,0 +1,55 @@
+\subsubsection{Mô tả bài toán}
+
+
+Trong các hệ điều hành hiện đại, việc quản lý bộ nhớ hiệu quả đóng vai trò quan trọng đối với hiệu năng hệ thống. 
+Một số bộ thu gom rác (garbage collector) và cơ chế quản lý bộ nhớ nâng cao có thể tận dụng thông tin về việc các trang bộ nhớ đã được truy cập (đọc hoặc ghi) để đưa ra các quyết định tối ưu, chẳng hạn như ưu tiên giữ lại các trang thường xuyên được sử dụng hoặc thu hồi các trang ít được truy cập.
+
+Trên kiến trúc RISC-V, phần cứng hỗ trợ việc theo dõi truy cập bộ nhớ thông qua các bit trạng thái trong Page Table Entry (PTE). Cụ thể, bit \texttt{PTE\_A} (Accessed bit) sẽ được phần cứng tự động thiết lập khi một trang bộ nhớ được truy cập và xảy ra TLB miss. 
+Tuy nhiên, thông tin này không được cung cấp trực tiếp cho không gian người dùng.
+
+Bài toán đặt ra là mở rộng hệ điều hành xv6 bằng cách cài đặt một lệnh gọi hệ thống mới, cho phép chương trình người dùng truy vấn các trang bộ nhớ đã được truy cập kể từ lần kiểm tra trước đó. 
+Lệnh gọi hệ thống này phải đọc trạng thái bit truy cập trong bảng trang, tổng hợp kết quả và trả về cho không gian người dùng dưới dạng một bitmask.
+
+
+
+
+
+
+\subsubsection{Phương pháp thực hiện}
+\paragraph{Xử lý tham số hệ thống}
+
+Trong hàm \texttt{sys\_pgaccess()}, các tham số được trích xuất từ không gian người dùng bằng các hàm hỗ trợ của xv6:
+\begin{itemize}
+    \item \texttt{argaddr()} để lấy địa chỉ ảo bắt đầu và địa chỉ bộ đệm kết quả.
+    \item \texttt{argint()} để lấy số lượng trang cần kiểm tra.
+\end{itemize}
+
+Để đảm bảo an toàn và tránh quét quá nhiều trang, số lượng trang được giới hạn ở một giá trị tối đa cho phép.
+
+\paragraph{Duyệt bảng trang và kiểm tra bit truy cập}
+
+Hệ điều hành sử dụng hàm \texttt{walk()} trong \texttt{kernel/vm.c} để truy xuất Page Table Entry tương ứng với từng địa chỉ ảo của các trang cần kiểm tra. Với mỗi PTE hợp lệ:
+\begin{itemize}
+    \item Kiểm tra bit \texttt{PTE\_A} để xác định xem trang đã được truy cập hay chưa.
+    \item Nếu bit \texttt{PTE\_A} được thiết lập, bit tương ứng trong bitmask sẽ được đặt.
+\end{itemize}
+
+Bit \texttt{PTE\_A} được định nghĩa trong \texttt{kernel/riscv.h} dựa trên đặc tả của kiến trúc RISC-V.
+
+\paragraph{Xóa bit truy cập sau khi kiểm tra}
+
+Sau khi phát hiện một trang đã được truy cập, bit \texttt{PTE\_A} trong PTE sẽ được xóa. Việc này đảm bảo rằng:
+\begin{itemize}
+    \item Các lần gọi \texttt{pgaccess()} tiếp theo chỉ phản ánh các truy cập mới.
+    \item Thông tin trả về luôn thể hiện chính xác các trang được truy cập kể từ lần kiểm tra gần nhất.
+\end{itemize}
+
+\paragraph{Trả kết quả về không gian người dùng}
+
+Bitmask kết quả được lưu tạm thời trong một biến của kernel. Sau khi hoàn tất quá trình quét:
+\begin{itemize}
+    \item Hàm \texttt{copyout()} được sử dụng để sao chép bitmask từ không gian kernel sang bộ đệm trong không gian người dùng.
+    \item Việc sao chép này đảm bảo tính an toàn bộ nhớ giữa kernel và user space.
+\end{itemize}
+
+---
