@@ -83,8 +83,9 @@ sys_pgaccess(void)
   // Address to store the bitmask
   uint64 mask_addr;
 
-  if(argaddr(0, &base) < 0 || argint(1, &len) < 0 || argaddr(2, &uaddr) < 0)
-    return -1;
+    argaddr(0, &base);
+    argint(1, &len);
+    argaddr(2, &mask_addr);
   // Limit to 32 like test
   if(len <= 0 || len > 32)
     return -1;
@@ -107,7 +108,7 @@ sys_pgaccess(void)
       *pte &= ~PTE_A;
     }
   }
-  if (copyout(p->pagetable, uaddr, (char *)&bitmask, sizeof(bitmask)) < 0)
+  if (copyout(p->pagetable, mask_addr, (char *)&bitmask, sizeof(bitmask)) < 0)
     return -1;
 
 
