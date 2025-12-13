@@ -83,12 +83,10 @@ sys_pgaccess(void)
   // Address to store the bitmask
   uint64 mask_addr;
 
-  argaddr(0, &base);
-  argint(1, &len);
-  argaddr(2, &mask_addr);
-
+  if(argaddr(0, &base) < 0 || argint(1, &len) < 0 || argaddr(2, &uaddr) < 0)
+    return -1;
   // Limit to 32 like test
-  if(len > 32)
+  if(len <= 0 || len > 32)
     return -1;
 
   struct proc *p = myproc();
@@ -99,16 +97,19 @@ sys_pgaccess(void)
     uint64 va = base + i * PGSIZE;
     pte_t *pte = walk(p->pagetable, va, 0);
 
-    // Page not mapped (valid bit is 0)
-    if((*pte & PTE_V) == 0)
+    if (pte == 0)
       continue;
 
-    // If accessed bit is set
-    if(*pte & PTE_A) {
-      // Set bit in bitmask to indicate access
+    // Page not mapped (valid bit is 0)
+    if ((*pte & PTE_V) && (*pte & PTE_A))
+    {
       bitmask |= (1 << i);
+      *pte &= ~PTE_A;
     }
   }
+  if (copyout(p->pagetable, uaddr, (char *)&bitmask, sizeof(bitmask)) < 0)
+    return -1;
+
 
   return 0;
 }
