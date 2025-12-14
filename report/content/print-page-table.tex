@@ -1,10 +1,6 @@
 \subsubsection{Mô tả bài toán}
 
-Viết hàm \texttt{vmprint()} để in ra nội dung của bảng trang (page table) trong hệ thống RISC-V. Hàm này giúp hình dung cấu trúc phân cấp của bảng trang và hỗ trợ gỡ lỗi trong tương lai.
-
-Hàm \texttt{vmprint()} nhận vào một tham số kiểu \texttt{pagetable\_t} và in bảng trang đó theo định dạng phân cấp. Mỗi mức của bảng trang được thể hiện bằng các dấu chấm (\texttt{..}), cho biết độ sâu của PTE trong cấu trúc cây. Chỉ các PTE hợp lệ mới được in ra, bao gồm chỉ số PTE, giá trị PTE (với các bit quyền truy cập), và địa chỉ vật lý tương ứng.
-
-Ngoài ra, chèn lệnh gọi \texttt{vmprint()} trong \texttt{exec.c} để in bảng trang của tiến trình đầu tiên (PID = 1) ngay trước khi hàm \texttt{exec()} trả về. Bài tập đạt yêu cầu khi vượt qua bài kiểm tra "pte printout" của lệnh \texttt{make grade}.
+Viết hàm \texttt{vmprint(pagetable\_t)} để in nội dung bảng trang trong RISC-V theo định dạng phân cấp. Mỗi cấp được thể hiện bằng dấu \texttt{..}, in ra chỉ số PTE, giá trị PTE (bao gồm các bit quyền truy cập), và địa chỉ vật lý của các PTE hợp lệ. Chèn lệnh gọi \texttt{vmprint()} vào \texttt{exec.c} để in bảng trang của tiến trình init (PID = 1).
 
 \subsubsection{Phương pháp thực hiện}
 \begin{enumerate}
@@ -44,3 +40,112 @@ Trong hàm \texttt{exec()} của \texttt{kernel/exec.c}:
 \item Thêm điều kiện kiểm tra: \texttt{if(p->pid == 1) vmprint(p->pagetable)}.
 \item Điều này đảm bảo chỉ in bảng trang của tiến trình init (tiến trình đầu tiên).
 \end{itemize}
+
+\subsubsection{Cấu trúc bảng trang và logic ánh xạ}
+
+\paragraph{Cấu trúc bảng trang phân cấp trong RISC-V}
+Hệ thống RISC-V sử dụng bảng trang phân cấp 3 cấp (3-level page table) để ánh xạ địa chỉ ảo 39-bit sang địa chỉ vật lý. Mỗi cấp bảng trang chứa 512 mục (Page Table Entry - PTE), mỗi PTE có kích thước 64-bit.
+
+Cấu trúc địa chỉ ảo 39-bit được chia thành các phần:
+\begin{itemize}
+\item \textbf{Bits 38-30 (9 bits):} Chỉ số vào bảng trang cấp 2 (L2) - 512 mục
+\item \textbf{Bits 29-21 (9 bits):} Chỉ số vào bảng trang cấp 1 (L1) - 512 mục
+\item \textbf{Bits 20-12 (9 bits):} Chỉ số vào bảng trang cấp 0 (L0) - 512 mục
+\item \textbf{Bits 11-0 (12 bits):} Offset trong trang vật lý - 4096 bytes
+\end{itemize}
+
+\paragraph{Logic ánh xạ địa chỉ}
+Quá trình dịch địa chỉ ảo sang địa chỉ vật lý diễn ra như sau:
+\begin{enumerate}
+\item \textbf{Bắt đầu từ bảng trang gốc (root page table):} Địa chỉ bảng trang gốc được lưu trong thanh ghi \texttt{satp}.
+\item \textbf{Cấp 2 (L2):} Sử dụng bits 38-30 của địa chỉ ảo làm chỉ số để tra cứu PTE tương ứng trong bảng trang cấp 2.
+\item \textbf{Kiểm tra PTE:}
+\begin{itemize}
+    \item Nếu PTE không hợp lệ (bit \texttt{V} = 0): Lỗi page fault.
+    \item Nếu PTE là trang lá (có ít nhất một bit R, W, hoặc X = 1): Lấy địa chỉ vật lý từ PPN (Physical Page Number) và kết hợp với offset.
+    \item Nếu PTE là bảng trang con (R = W = X = 0): Chuyển sang cấp tiếp theo.
+\end{itemize}
+\item \textbf{Cấp 1 (L1):} Nếu PTE ở cấp 2 là bảng trang con, sử dụng PPN để tìm bảng trang cấp 1, sau đó dùng bits 29-21 làm chỉ số tra cứu PTE.
+\item \textbf{Cấp 0 (L0):} Tương tự, nếu PTE ở cấp 1 là bảng trang con, tiếp tục với bits 20-12.
+\item \textbf{Tính địa chỉ vật lý cuối cùng:} Khi tìm được trang lá, địa chỉ vật lý = (PPN << 12) | offset (12 bits cuối của địa chỉ ảo).
+\end{enumerate}
+
+\paragraph{Trang lá (Leaf Page) và bảng trang con}
+\textbf{Trang lá} là PTE cuối cùng trong chuỗi tra cứu, trỏ đến trang vật lý thực sự chứa dữ liệu. Đặc điểm nhận biết trang lá:
+\begin{itemize}
+\item Có ít nhất một bit trong R (Read), W (Write), hoặc X (Execute) được set = 1.
+\item PPN của trang lá chứa địa chỉ vật lý của trang dữ liệu (data page).
+\item Trang lá có thể xuất hiện ở bất kỳ cấp nào (L2, L1, hoặc L0), cho phép superpage (trang lớn hơn 4KB).
+\end{itemize}
+
+\textbf{Bảng trang con} (intermediate page table) là PTE trỏ đến bảng trang ở cấp thấp hơn. Đặc điểm:
+\begin{itemize}
+\item Không có bit R, W, X nào được set (R = W = X = 0).
+\item PPN của bảng trang con chứa địa chỉ vật lý của bảng trang cấp tiếp theo.
+\item Chỉ xuất hiện ở cấp 2 (L2) hoặc cấp 1 (L1), không ở cấp 0 (L0).
+\end{itemize}
+
+\paragraph{Quyền truy cập (Permission Bits)}
+Mỗi PTE chứa các bit quyền truy cập quan trọng:
+\begin{itemize}
+\item \textbf{V (Valid, bit 0):} PTE có hợp lệ hay không. Nếu V = 0, mọi truy cập đều gây page fault.
+\item \textbf{R (Read, bit 1):} Cho phép đọc. Nếu R = 1, trang có thể được đọc.
+\item \textbf{W (Write, bit 2):} Cho phép ghi. Nếu W = 1, trang có thể được ghi. Thường W = 1 kéo theo R = 1.
+\item \textbf{X (Execute, bit 3):} Cho phép thực thi. Nếu X = 1, trang có thể chứa mã lệnh để thực thi.
+\item \textbf{U (User, bit 4):} Cho phép user mode truy cập. Nếu U = 1, trang có thể được truy cập từ user mode, nếu U = 0, chỉ kernel mode mới truy cập được.
+\item \textbf{G (Global, bit 5):} Ánh xạ toàn cục, không bị xóa khi chuyển ngữ cảnh.
+\item \textbf{A (Accessed, bit 6):} Đánh dấu trang đã được truy cập.
+\item \textbf{D (Dirty, bit 7):} Đánh dấu trang đã được ghi.
+\end{itemize}
+
+Các tổ hợp quyền thường gặp:
+\begin{itemize}
+\item \texttt{R=1, W=0, X=0, U=1:} Trang chỉ đọc của user (read-only data).
+\item \texttt{R=1, W=1, X=0, U=1:} Trang đọc-ghi của user (data, heap, stack).
+\item \texttt{R=1, W=0, X=1, U=1:} Trang mã lệnh của user (code/text segment).
+\item \texttt{R=1, W=1, X=0, U=0:} Trang đọc-ghi của kernel.
+\item \texttt{R=0, W=0, X=0, V=1:} Bảng trang con (không phải trang lá).
+\end{itemize}
+
+\subsubsection{Phân tích output của vmprint()}
+Khi chạy hàm \texttt{vmprint()}, output có dạng:
+\begin{verbatim}
+page table 0x0000000087f6e000
+..0: pte 0x0000000021fda801 pa 0x0000000087f6a000
+.. ..0: pte 0x0000000021fda401 pa 0x0000000087f69000
+.. .. ..0: pte 0x0000000021fdac1f pa 0x0000000087f6b000
+.. .. ..1: pte 0x0000000021fda00f pa 0x0000000087f68000
+\end{verbatim}
+
+Giải thích từng dòng:
+\begin{itemize}
+\item \textbf{Dòng 1:} \texttt{page table 0x0000000087f6e000} - Địa chỉ vật lý của bảng trang gốc (root page table).
+\item \textbf{Dòng 2:} \texttt{..0: pte 0x0000000021fda801 pa 0x0000000087f6a000}
+\begin{itemize}
+    \item \texttt{..0}: Cấp 2 (L2), PTE tại chỉ số 0.
+    \item \texttt{pte 0x0000000021fda801}: Giá trị PTE. Bit 0 (V) = 1 (hợp lệ), các bit R|W|X = 0 → Đây là bảng trang con.
+    \item \texttt{pa 0x0000000087f6a000}: Địa chỉ vật lý của bảng trang cấp 1.
+\end{itemize}
+\item \textbf{Dòng 3:} \texttt{.. ..0: pte 0x0000000021fda401 pa 0x0000000087f69000}
+\begin{itemize}
+    \item \texttt{.. ..0}: Cấp 1 (L1), PTE tại chỉ số 0.
+    \item Giá trị PTE cho thấy đây cũng là bảng trang con (R|W|X = 0).
+    \item Trỏ đến bảng trang cấp 0 tại địa chỉ \texttt{0x87f69000}.
+\end{itemize}
+\item \textbf{Dòng 4:} \texttt{.. .. ..0: pte 0x0000000021fdac1f pa 0x0000000087f6b000}
+\begin{itemize}
+    \item \texttt{.. .. ..0}: Cấp 0 (L0), PTE tại chỉ số 0.
+    \item \texttt{pte 0x0000000021fdac1f}: Giá trị PTE kết thúc bằng \texttt{0x1f} (binary: 11111) → V=1, R=1, W=1, X=1, U=1.
+    \item Đây là \textbf{trang lá} với quyền đọc, ghi, thực thi cho user mode.
+    \item \texttt{pa 0x0000000087f6b000}: Địa chỉ vật lý của trang dữ liệu.
+\end{itemize}
+\item \textbf{Dòng 5:} \texttt{.. .. ..1: pte 0x0000000021fda00f pa 0x0000000087f68000}
+\begin{itemize}
+    \item \texttt{.. .. ..1}: Cấp 0 (L0), PTE tại chỉ số 1.
+    \item \texttt{pte 0x0000000021fda00f}: Kết thúc bằng \texttt{0x0f} (binary: 01111) → V=1, R=1, W=1, X=1, U=0.
+    \item Đây là \textbf{trang lá} với quyền đọc, ghi, thực thi nhưng chỉ cho kernel mode (U=0).
+    \item Địa chỉ vật lý: \texttt{0x87f68000}.
+\end{itemize}
+\end{itemize}
+
+Từ output này, ta thấy rõ cấu trúc phân cấp: Bảng trang gốc (L2) → Bảng trang con (L1) → Bảng trang con (L0) → Các trang lá chứa dữ liệu thực sự. Mỗi cấp được thể hiện bằng số lượng dấu \texttt{..}, và quyền truy cập được mã hóa trong các bit cuối của giá trị PTE.
