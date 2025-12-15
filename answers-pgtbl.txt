@@ -1,0 +1,4 @@
+Ngoài getpid() thì syscall uptime() có thể được tăng tốc bằng cách sử dụng trang chia sẻ vì:	
+- Các system call trong xv6 có thể được tăng tốc bằng trang chia sẻ là những lệnh mà kernel có thể chủ động cập nhật giá trị cho user space mà không cần phải chuyển quyền điều khiển qua trap/syscall mỗi lần truy xuất.
+- Các system call read-only sẽ phù hợp để tăng tốc bằng trang chia sẻ.
+- Những system call cần thao tác, thay đổi trạng thái hệ thống, hoặc cần kiểm tra quyền truy cập (ví dụ: read, write, open, exec, fork, exit, ...) thì không thể tăng tốc bằng cách này vì cần sự kiểm soát chặt chẽ từ kernel.
